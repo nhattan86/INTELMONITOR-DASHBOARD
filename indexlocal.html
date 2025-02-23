@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --primary-bg: rgba(13, 17, 23, 0.9);
+            --card-bg: rgba(0,255,255, 0.2);
+            --text-primary: #e6edf3;
+            --text-secondary: #E0FFFF;
+            --accent-blue: #8CFC00;
+            --accent-pink: #f02450;
+            --grid-line: rgba(255, 255, 255, 0.1);
+            --value-color: #88ff22;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(139deg, #388EE9, #F77FBE);
+            color: var(--text-primary);
+            min-height: 100vh;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            backdrop-filter: blur(120px);
+            z-index: -1;
+        }
+
+        .dashboard {
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card h3 {
+            margin: 0 0 20px 0;
+            color: var(--text-secondary);
+            font-size: 1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+        }
+
+        .card h3::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 0 15px var(--accent-blue);
+        }
+
+        .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: var(--value-color) !important; /* Override any existing color */
+            -webkit-text-fill-color: var(--value-color) !important; /* Override any background-clip text */
+            background: none; /* Remove gradient background */
+        }
+
+        .chart-container {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            height: 400px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            margin-top: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-pink));
+            border-radius: 6px;
+            transition: width 0.5s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 200%;
+            height: 100%;
+            background: linear-gradient(90deg,
+                transparent, rgba(255, 255, 255, 0.2), transparent);
+            animation: shine 2s infinite;
+        }
+
+        @keyframes shine {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .storage-details {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+            font-size: 0.9em;
+            color: var(--text-secondary);
+        }
+
+        .memory_usage_details {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 18px;
+            font-size: 2em;
+            color: var(--text-secondary);
+        }
+
+        .counter-details {
+            display: grid;
+            gap: 15px;
+        }
+
+        .counter-item {
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+            .value {
+                font-size: 1.5em;
+            }
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 25px;
+        }
+
+        .card-map {
+            width: 1048px; /* Full width of the container */
+            height: 390px;
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card-map:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-map h3 {
+            margin: 0 0 20px 0;
+            color: var(--text-secondary);
+            font-size: 1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+        }
+
+        .card-map h3::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 0 15px var(--accent-blue);
+        }
+
+        #map {
+            height: 339px;
+            border-radius: 15px;
+            margin-top: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-speed {
+            width: 300px; /* Full width of the container */
+            height: 390px;
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(12, 255, 2, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card-speed:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 40px rgba(255, 0, 0, 0.3);
+        }
+
+        .card-speed h3 {
+            margin: 0 0 20px 0;
+            color: var(--text-secondary);
+            font-size: 1em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+        }
+
+        .card-speed h3::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            margin-right: 10px;
+            box-shadow: 0 0 15px var(--accent-blue);
+        }
+
+
+        .box {
+            width: 100%;
+            height: 280px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: nowrap;
+        }
+
+        #speedometer {
+            width: 250px;
+            height: 250px;
+            border: 2px solid gray;
+            border-radius: 50%;
+            box-shadow: 0px 0px 10px 5px gray;
+            background: var(--card-bg);
+            position: relative;
+            overflow: hidden; /* Add this */
+        }
+
+        #speedometer #needle {
+            width: 3px;
+            height: 60px;
+            border: 1px solid white;
+            border-radius: 5px;
+            background-color: #89ff00;
+            position: absolute;
+            top: 25%;
+            left: 49%;
+            z-index: 111;
+            transform-origin: bottom;
+            transform: rotate(-134deg);
+            transition: 2s;
+            z-index: 2; /* Update this */
+        }
+
+        #point {
+            width: 20px;
+            height: 20px;
+            position: absolute;
+            border: 1px solid white;
+            border-radius: 50%;
+            bottom: -10px;
+            left: -9px;
+            background-color: #89ff00;
+            transition: 2s;
+        }
+
+
+
+        @keyframes vibrate {
+            from {
+                transform: translateX(calc(-50% - 1px));
+            }
+            to {
+                transform: translateX(calc(-50% + 1px));
+            }
+        }
+
+        /* Add speedometer markings */
+        #speedometer::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(
+                from 225deg,
+                transparent 0deg,
+                rgba(255, 255, 255, 0.1) 70deg,
+                transparent 90deg 270deg,
+                rgba(255, 255, 255, 0.1) 290deg
+            );
+        }
+
+       .speedometer-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+
+       .speed-block {
+            position: absolute;
+            border: 1px solid gray;
+            bottom: 79px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 2px 10px;
+            border-radius: 5px;
+            font-family: Arial Black;
+            color: white;
+            background-color: #4f7a36;
+            box-shadow: inset 0px 0px 4px 0px #83ff00;
+            z-index: 1;
+            animation: vibrate 0.1s linear infinite;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="grid">
+            <div class="card">
+                <h3>People Counter</h3>
+                <div class="counter-details">
+                    <div class="counter-item">
+                        <span>IN</span>
+                        <span id="down-up" class="value">0</span>
+                    </div>
+                    <div class="counter-item">
+                        <span>OUT</span>
+                        <span id="up-down" class="value">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Storage Usage</h3>
+                <div class="progress-bar">
+                    <div id="storage-bar" class="progress-fill"></div>
+                </div>
+                <div class="storage-details">
+                    <span>Used: <span id="used-storage">0</span> GB</span>
+                    <span>Free: <span id="free-storage">0</span> GB</span>
+                    <span>Total: <span id="total-storage">0</span> GB</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Temperature</h3>
+                <div id="temperature" class="value">0°C</div>
+                <div class="progress-bar">
+                    <div id="temp-bar" class="progress-fill"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>Location</h3>
+                <div id="location" class="value">Not Available</div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 25px; margin-bottom: 25px;">
+            <div class="card-speed">
+                <h3>Speed</h3>
+                <div class="box">
+                    <div id="speedometer">
+                        <img src="https://weblink8.com/wp-content/uploads/2023/04/speedometer.png" alt="Speedometer Background" class="speedometer-bg">
+                        <div id="needle">
+                            <div id="point"></div>
+                        </div>
+                        <div id="speed-display" class="speed-block">0 km/h</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-map">
+                <h3>Location Map</h3>
+                <div id="map"></div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="chart-container">
+                <canvas id="peopleFlowChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="peopleCountChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        const socket = io();
+        let flowChart, countChart;
+        const maxDataPoints = 50;
+        let timeData = [];
+        let upDownData = [];
+        let downUpData = [];
+        let map, marker, pathCoordinates = [], pathLine; // Declare globally
+
+        const defaultLatitude = 10.731976073258629;
+        const defaultLongitude = 106.69932603584631;
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            initMap(defaultLatitude, defaultLongitude);
+        });
+
+        socket.on('connect', () => {
+            console.log('Connected to Socket.IO server');
+        });
+
+        socket.on('disconnect', () => {
+            console.error('Disconnected from Socket.IO server');
+            alert('Disconnected from server. Please refresh the page.');
+        });
+
+        socket.on('update_data', (data) => {
+            if (validateData(data)) {
+                updateDashboard(data);
+            } else {
+                console.error('Invalid data received:', data);
+            }
+        });
+
+        function validateData(data) {
+            return data && typeof data === 'object' &&
+                typeof data.down_up_count === 'number' &&
+                typeof data.up_down_count === 'number' &&
+                typeof data.usage_percent === 'number' &&
+                typeof data.used_gb === 'number' &&
+                typeof data.free_gb === 'number' &&
+                typeof data.total_gb === 'number' &&
+                typeof data.temperature === 'number' &&
+                (typeof data.latitude === 'number' || data.latitude === undefined || data.latitude === null) &&
+                (typeof data.longitude === 'number' || data.longitude === undefined || data.longitude === null) &&
+                typeof data.speed === 'number';
+        }
+
+        function updateDashboard(data) {
+            // Update counters
+            document.getElementById('down-up').textContent = data.down_up_count;
+            document.getElementById('up-down').textContent = data.up_down_count;
+
+            // Update storage
+            document.getElementById('storage-bar').style.width = `${data.usage_percent}%`;
+            document.getElementById('used-storage').textContent = data.used_gb.toFixed(2);
+            document.getElementById('free-storage').textContent = data.free_gb.toFixed(2);
+            document.getElementById('total-storage').textContent = data.total_gb.toFixed(2);
+
+
+
+            // Update temperature
+            document.getElementById('temperature').textContent = `${data.temperature}°C`;
+            const tempPercentage = ((data.temperature - 32) / (100 - 32)) * 100;
+            document.getElementById('temp-bar').style.width = `${Math.min(100, Math.max(0, tempPercentage))}%`;
+
+            // Update location
+            if (data.latitude && data.longitude) {
+                document.getElementById('location').textContent =
+                    `${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)}`;
+            }
+
+            const speed = data.speed || 0;
+            const maxSpeed = 180; // Maximum speed on the speedometer
+            const minAngle = -134; // Starting angle
+            const maxAngle = 134; // Ending angle
+            const angleRange = maxAngle - minAngle;
+            const speedAngle = minAngle + (speed / maxSpeed * angleRange);
+
+            // Update needle rotation and speed display
+            const needle = document.getElementById('needle');
+            const speedDisplay = document.getElementById('speed-display');
+
+            if (needle && speedDisplay) {
+                // Update needle position
+                needle.style.cssText = `transform-origin: bottom; transform: rotate(${speedAngle}deg); background-color: ${speed > 100 ? 'red' : '#89ff00'}; transition: 2s;`;
+
+                // Update point color
+                const point = document.getElementById('point');
+                if (point) {
+                    point.style.backgroundColor = speed > 100 ? 'red' : '#89ff00';
+                }
+
+                // Update speed display
+                speedDisplay.textContent = `${speed.toFixed(1)} km/h`;
+                // Keep the vibration animation running
+                speedDisplay.style.animation = '0.1s vibrate linear infinite';
+            }
+            // Update flow chart
+            const now = new Date();
+            const formattedTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} ${String(now.getDate()).padStart(2, '0')}:${String(now.getMonth() + 1).padStart(2, '0')}:${String(now.getFullYear()).slice(-2)}`;
+            timeData.push(formattedTime);
+            upDownData.push(data.up_down_count);
+            downUpData.push(data.down_up_count);
+
+            if (timeData.length > maxDataPoints) {
+                timeData.shift();
+                upDownData.shift();
+                downUpData.shift();
+            }
+
+            flowChart.update('none');
+
+            // Update count chart
+            countChart.data.datasets[0].data = [data.down_up_count, data.up_down_count];
+            countChart.update('none');
+
+            if (data.latitude && data.longitude) {
+                updateMap(data.latitude, data.longitude);
+                document.getElementById('location').textContent = `${data.latitude.toFixed(6)}, ${data.longitude.toFixed(6)}`;
+            }
+        }
+
+        function initCharts() {
+            const flowCtx = document.getElementById('peopleFlowChart').getContext('2d');
+            const countCtx = document.getElementById('peopleCountChart').getContext('2d');
+
+            // Flow Chart (Line Chart)
+            flowChart = new Chart(flowCtx, {
+                type: 'line',
+                data: {
+                    labels: timeData,
+                    datasets: [{
+                        label: 'IN',
+                        data: downUpData,
+                        borderColor: '#088bff',
+                        backgroundColor: 'rgba(39, 39, 255, 0.2)',
+                        tension: 0.4,
+                        fill: true
+                    }, {
+                        label: 'OUT',
+                        data: upDownData,
+                        borderColor: '#ff082d',
+                        backgroundColor: 'rgba(255, 39, 39, 0.2)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'People Flow Over Time',
+                            color: '#e6edf3',
+                            font: {
+                                size: 16
+                            }
+                        },
+                        legend: {
+                            labels: {
+                                color: '#e6edf3'
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            position: 'top', // Place x-axis on top
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)',
+                                drawBorder: false // Remove border to visually detach from bottom
+                            },
+                            ticks: {
+                                color: '#007900',
+                                align: 'start', // Align ticks to the start (left)
+                                padding: 5,      // Add some padding to move labels above the line
+                                maxRotation: 0,    // Prevent rotation for better readability
+                                minRotation: 0,
+                                autoSkipPadding: 15 // Adjust to prevent labels overlapping
+                            }
+                        },
+                        y: {
+                            position: 'left', // Ensure y-axis is on the left
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#007900',
+                                align: 'start' // Align y-axis ticks to the start (top) for cleaner look
+                            }
+                        }
+                    },
+                    elements: {
+                        line: {
+                            tension: 0.4 // keep tension
+                        }
+                    },
+                    animation: false // Disable animation for smoother real-time updates
+                }
+            });
+
+            // Count Chart (Bar Chart)
+            countChart = new Chart(countCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['IN', 'OUT'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: [
+                            'rgba(39, 39, 255, 0.6)',
+                            'rgba(255, 39, 39, 0.6)'
+                        ],
+                        borderColor: [
+                            'rgba(39, 39, 255, 1)',
+                            'rgba(255, 39, 39, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Current People Count',
+                            color: '#e6edf3',
+                            font: {
+                                size: 16
+                            }
+                        },
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#007900'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#007900'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateTimeSeriesData(data) {
+            // ... (add your time series data update logic here)
+            const now = new Date();
+            timeData.push(now.toLocaleTimeString()); // Example: Just time
+            upDownData.push(data.up_down_count);
+            downUpData.push(data.down_up_count);
+
+            if (timeData.length > maxDataPoints) {
+                timeData.shift();
+                upDownData.shift();
+                downUpData.shift();
+            }
+        }
+        function updateFlowChart() {
+            if(flowChart){
+                flowChart.data.labels = timeData;
+                flowChart.data.datasets[0].data = downUpData;
+                flowChart.data.datasets[1].data = upDownData;
+                flowChart.update('none');
+            }
+        }
+        function updateCountChart(data) {
+        if (countChart) {
+            countChart.data.datasets[0].data = [data.down_up_count, data.up_down_count];
+            countChart.update('none');
+            }
+        }
+
+
+        function initMap(latitude, longitude) {
+            map = L.map('map').setView([latitude, longitude], 13); // Zoom level adjusted
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            marker = L.marker([latitude, longitude]).addTo(map);
+            pathLine = L.polyline([], { // Initialize empty polyline
+                color: '#89ff00',
+                weight: 3.9,
+                opacity: 1,
+                smoothFactor: 1
+            }).addTo(map);
+        }
+
+
+        function updateMap(latitude, longitude) {
+            // Update marker position
+            marker.setLatLng([latitude, longitude]);
+
+            // Add new coordinates to the path and update polyline
+            pathCoordinates.push([latitude, longitude]);
+            pathLine.setLatLngs(pathCoordinates);
+
+            if (pathCoordinates.length > 1) {
+                map.fitBounds(pathLine.getBounds());
+            } else {
+                map.setView([latitude, longitude], 13); // Zoom level adjusted
+            }
+
+            if (pathCoordinates.length > 100) {
+                pathCoordinates.shift();
+            }
+        }
+
+        window.addEventListener('resize', function() {
+            if (flowChart) flowChart.resize();
+            if (countChart) countChart.resize();
+        });
+    </script>
+</body>
+</html>
