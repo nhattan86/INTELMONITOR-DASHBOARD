@@ -22,7 +22,7 @@ def on_mqtt_message(client, userdata, message):
 
 def setup_mqtt_client():
     mqtt_client.on_message = on_mqtt_message
-    mqtt_client.connect("192.168.12.3", 1883, 60)
+    mqtt_client.connect("127.0.0.1", 1883, 60)
     mqtt_client.subscribe("dashboard/data")
     mqtt_client.loop_start()
 
@@ -32,6 +32,11 @@ setup_mqtt_client()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Keep the dashboard local to this computer.
+SERVER_HOST = "127.0.0.1"
+SERVER_PORT = 5000
+SERVER_URL = f"http://localhost:{SERVER_PORT}"
 
 # Path to your HTML file
 HTML_FILE_PATH = r"indexlocal.html"
@@ -190,11 +195,11 @@ if __name__ == '__main__':
     print("🚀 INTEL MONITOR DASHBOARD SERVER")
     print("=" * 60)
     print(f"📁 HTML File: {HTML_FILE_PATH}")
-    print(f"📊 Dashboard URL: http://localhost:5000")
+    print(f"📊 Dashboard URL: {SERVER_URL}")
     print("🔧 Control URLs:")
-    print("   • Start Simulation: http://localhost:5000/start_simulation")
-    print("   • Stop Simulation: http://localhost:5000/stop_simulation")
-    print("   • Server Status: http://localhost:5000/api/status")
+    print(f"   • Start Simulation: {SERVER_URL}/start_simulation")
+    print(f"   • Stop Simulation: {SERVER_URL}/stop_simulation")
+    print(f"   • Server Status: {SERVER_URL}/api/status")
     print("=" * 60)
     
     # Check if HTML file exists
@@ -211,8 +216,8 @@ if __name__ == '__main__':
     try:
         # Start the server
         socketio.run(app, 
-                    host='0.0.0.0',  # Allow external connections
-                    port=5000, 
+                    host=SERVER_HOST,
+                    port=SERVER_PORT,
                     debug=True, 
                     use_reloader=False)  # Disable reloader to prevent thread issues
     except KeyboardInterrupt:

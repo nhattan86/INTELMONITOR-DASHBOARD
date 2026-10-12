@@ -18,7 +18,7 @@ from datetime import datetime
 import paho.mqtt.client as mqtt
 
 class IoTDataSimulator:
-    def __init__(self, mqtt_broker="192.168.12.3", mqtt_port=1883):
+    def __init__(self, mqtt_broker="127.0.0.1", mqtt_port=1883):
         # MQTT Configuration
         self.mqtt_broker = mqtt_broker
         self.mqtt_port = mqtt_port
@@ -262,9 +262,9 @@ def main():
     print("=" * 40)
     
     # Configuration
-    mqtt_broker = input("Enter MQTT broker IP (default: 192.168.12.3): ").strip()
+    mqtt_broker = input("Enter MQTT broker IP (default: 127.0.0.1): ").strip()
     if not mqtt_broker:
-        mqtt_broker = "192.168.12.3"
+        mqtt_broker = "127.0.0.1"
     
     mqtt_port = input("Enter MQTT port (default: 1883): ").strip()
     if not mqtt_port:
